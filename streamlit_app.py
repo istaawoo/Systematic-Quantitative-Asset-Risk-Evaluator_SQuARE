@@ -7,7 +7,7 @@ import altair as alt
 from datetime import datetime, timezone
 
 st.set_page_config(layout="wide", page_title="Stock Risk Explorer (MVP)")
-
+#Test
 st.title("Stock Risk Explorer — Prototype")
 st.caption("Prototype uses yfinance (good for demos). Not a trading feed. See data timestamp below.")
 
