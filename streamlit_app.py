@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 st.set_page_config(layout="wide", page_title="Stock Risk Explorer")
 st.title("Stock Risk Explorer")
 st.caption("(Data via yfinance)")
+st.markdown("**Square Stock Analyzer**: Systematic Quantitative Asset Risk Evaluator (SQuARE)")
 
 # Define weights at module level so they're accessible throughout
 weights = {"vol": 0.4, "drawdown": 0.25, "growth": 0.2, "liquidity": 0.15}
@@ -38,8 +39,10 @@ st.markdown(
         box-shadow:0 6px 18px rgba(0,0,0,0.08);
     }
     .tooltip:hover .tooltiptext{visibility:visible; opacity:1}
-    .company-card{border:1px solid #e9ecef;padding:12px;border-radius:10px;background:#fbfbfb}
-    .company-card h4{margin:0 0 6px 0}
+    /* company card: dark mode readable */
+    .company-card{border:1px solid rgba(255,255,255,0.06);padding:12px;border-radius:10px;background:#0b1220;color:#f8fafc}
+    .company-card h4{margin:0 0 6px 0;color:#ffffff}
+    .company-card div{color:#e6eef8}
     .company-logo{width:64px;height:64px;border-radius:8px;margin-right:10px}
     </style>
     """,
@@ -162,7 +165,7 @@ if "hist" in st.session_state:
     # Header
     colA, colB = st.columns([3, 1])
     with colA:
-        st.markdown(f"## {ticker} - ${last_price:.2f}")
+        st.markdown(f"## {ticker}: ${last_price:.2f}")
         st.caption(f"Data timestamp: {updated}")
         # short ASI definition
         st.caption("ASI = Asset Stability Index (0-100). Higher = more risky. Computed from volatility, drawdown, liquidity, and growth.")
@@ -288,39 +291,90 @@ if "hist" in st.session_state:
         st.metric("Hypothetical ASI (your sliders)", f"{hypothetical_asi:.1f} / 100")
 
     # Chart with improved hover behavior (nearest on x-axis) and no permanent dots
-    st.subheader("Price chart (1 year) - hover to see details")
+    st.subheader("Price chart - hover to see details")
+
+    # timeframe controls (default: weekly)
+    timeframe = st.selectbox("Time range:", ["1y", "5y"], index=0, key="chart_timeframe")
+
     hist_reset = hist.reset_index().rename(columns={"Date": "date", "Close": "close"})
-    hist_reset["date_formatted"] = hist_reset["date"].dt.strftime("%Y-%m-%d")
-    hist_reset["close_formatted"] = hist_reset["close"].apply(lambda x: f"${x:.2f}")
+    end = hist_reset["date"].iloc[-1]
+    one_year_ago = end - pd.Timedelta(days=365)
+    five_year_ago = end - pd.Timedelta(days=5*365)
 
-    nearest = alt.selection(type="single", nearest=True, on="mousemove", fields=["date"], empty="none")
+    if timeframe == "1y":
+        hist_display = hist_reset.loc[hist_reset["date"] >= one_year_ago].copy()
+        if len(hist_display) < 10:
+            hist_display = hist_reset.tail(252).copy()
+        # 1y: daily prices
+    else:
+        hist_display = hist_reset.loc[hist_reset["date"] >= five_year_ago].copy()
+        # 5y: weekly prices
+        hist_display = hist_display.set_index("date").resample("W").last().dropna().reset_index()
 
-    base = alt.Chart(hist_reset).encode(
+    hist_display["date_formatted"] = hist_display["date"].dt.strftime("%Y-%m-%d")
+    hist_display["close_formatted"] = hist_display["close"].apply(lambda x: f"${x:.2f}")
+    hist_display["label"] = hist_display["date_formatted"] + ": " + hist_display["close_formatted"]
+
+    # selection that follows the mouse along the x-axis (works anywhere horizontally)
+    nearest = alt.selection_single(on="mousemove", encodings=["x"], nearest=True, empty="none")
+
+    base = alt.Chart(hist_display).encode(
         x=alt.X("date:T", title="Date"),
         y=alt.Y("close:Q", title="Close Price ($)"),
     )
 
     line = base.mark_line(color="#1f77b4")
 
-    # invisible selectors capture the mouse
-    selectors = alt.Chart(hist_reset).mark_point().encode(x="date:T", opacity=alt.value(0)).add_selection(nearest)
-
-    # show a dot only at the nearest point on hover
-    points = line.mark_point(size=80).encode(opacity=alt.condition(nearest, alt.value(1), alt.value(0)))
+    # invisible overlay captures the mouse across the chart area so nearest works without touching the line
+    selectors = alt.Chart(hist_display).mark_rect(opacity=0).encode(x="date:T").add_selection(nearest)
 
     # vertical rule at the nearest x position
-    rules = alt.Chart(hist_reset).mark_rule(color="gray").encode(x="date:T").transform_filter(nearest)
+    rules = alt.Chart(hist_display).mark_rule(color="gray").encode(x="date:T").transform_filter(nearest)
 
     # tooltip layer (invisible point that carries the tooltip)
-    tooltip = alt.Chart(hist_reset).mark_point().encode(
+    tooltip = alt.Chart(hist_display).mark_point().encode(
         x="date:T",
         y="close:Q",
         tooltip=[alt.Tooltip("date_formatted:N", title="Date"), alt.Tooltip("close_formatted:N", title="Price")],
-        opacity=alt.condition(nearest, alt.value(0), alt.value(0)),
+        opacity=alt.value(0),
     ).transform_filter(nearest)
 
-    chart = alt.layer(line, selectors, points, rules, tooltip).properties(height=420).interactive()
+    # label text shown at top-left while hovering (always visible when hovering)
+    label = alt.Chart(hist_display).mark_text(align="left", dx=10, dy=10, color="#111").encode(
+        text=alt.Text("label:N"),
+    ).transform_filter(nearest)
+
+    chart = alt.layer(line, selectors, rules, tooltip, label).properties(height=420).interactive()
     st.altair_chart(chart, use_container_width=True)
 
     st.write("---")
-    st.info("Notes: Data via yfinance. Data may be delayed; this is not a trading feed. All metric mappings are documented for reproducibility.")
+    with st.expander("Technical Methodology & Details"):
+        st.markdown("""
+        **Asset Stability Index (ASI) Calculation**
+        - The ASI is a composite risk score (0-100, higher = more risky) based on four key metrics: Volatility, Max Drawdown, Growth, and Liquidity.
+        - **Weights:**
+            - Volatility: 40%
+            - Max Drawdown: 25%
+            - Growth: 20%
+            - Liquidity: 15%
+        - **Volatility** is annualized standard deviation of daily returns (1 year for 1y chart, 5 years for 5y chart).
+        - **Max Drawdown** is the largest peak-to-trough loss over the same period.
+        - **Growth** is the 1-year or 5-year return, mapped to a risk score (extreme positive/negative returns increase risk).
+        - **Liquidity** is average daily volume (higher volume = lower risk).
+        - Each metric is mapped to a subscore (0-100) using rule-based bins, then combined using the above weights.
+        - The ASI is not a prediction, but a standardized risk summary for comparison.
+        
+        **Why These Weights?**
+        - Volatility and drawdown are the most direct measures of risk for liquid assets, so they are weighted highest.
+        - Growth is included to penalize assets with extreme returns (which may be unstable or speculative).
+        - Liquidity is included to penalize assets that may be hard to exit in a crisis.
+        - Weights are chosen to balance short-term risk (volatility), tail risk (drawdown), and market structure (growth/liquidity).
+        
+        **Methodology Notes**
+        - All calculations use adjusted close prices.
+        - Volatility is annualized using sqrt(252) for daily data, sqrt(52) for weekly data.
+        - Drawdown is calculated as the largest percent drop from a prior peak.
+        - Growth is mapped to risk using a simple linear binning: moderate growth lowers risk, extreme growth or loss increases risk.
+        - Liquidity bins are chosen based on typical US equity volume distributions.
+        - The methodology is documented for reproducibility and transparency.
+        """)
