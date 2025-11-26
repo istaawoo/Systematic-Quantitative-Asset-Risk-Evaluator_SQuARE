@@ -290,10 +290,10 @@ if "hist" in st.session_state:
     with col_hyp:
         st.metric("Hypothetical ASI (your sliders)", f"{hypothetical_asi:.1f} / 100")
 
-    # Chart with improved hover behavior (nearest on x-axis) and no permanent dots
+        # Chart with improved hover behavior and bounded zoom
     st.subheader("Price chart - hover to see details")
 
-    # timeframe controls (default: weekly)
+    # timeframe controls (default: 1y)
     timeframe = st.selectbox("Time range:", ["1y", "5y"], index=0, key="chart_timeframe")
 
     hist_reset = hist.reset_index().rename(columns={"Date": "date", "Close": "close"})
@@ -305,47 +305,77 @@ if "hist" in st.session_state:
         hist_display = hist_reset.loc[hist_reset["date"] >= one_year_ago].copy()
         if len(hist_display) < 10:
             hist_display = hist_reset.tail(252).copy()
-        # 1y: daily prices
+        domain_min = hist_display["date"].min()
+        domain_max = hist_display["date"].max()
     else:
         hist_display = hist_reset.loc[hist_reset["date"] >= five_year_ago].copy()
-        # 5y: weekly prices
         hist_display = hist_display.set_index("date").resample("W").last().dropna().reset_index()
+        domain_min = hist_display["date"].min()
+        domain_max = hist_display["date"].max()
 
     hist_display["date_formatted"] = hist_display["date"].dt.strftime("%Y-%m-%d")
     hist_display["close_formatted"] = hist_display["close"].apply(lambda x: f"${x:.2f}")
     hist_display["label"] = hist_display["date_formatted"] + ": " + hist_display["close_formatted"]
 
-    # selection that follows the mouse along the x-axis (works anywhere horizontally)
-    nearest = alt.selection_single(on="mousemove", encodings=["x"], nearest=True, empty="none")
+    # Zoomable Altair chart constrained to timeframe, with proper tooltip
+    nearest = alt.selection_single(
+        on="mousemove",
+        fields=["date"],
+        nearest=True,
+        empty="none"
+    )
 
     base = alt.Chart(hist_display).encode(
-        x=alt.X("date:T", title="Date"),
-        y=alt.Y("close:Q", title="Close Price ($)"),
+        x=alt.X(
+            "date:T",
+            title="Date",
+            scale=alt.Scale(domain=[domain_min, domain_max], clamp=True)  # limits max domain
+        ),
+        y=alt.Y("close:Q", title="Close Price ($)")
     )
 
     line = base.mark_line(color="#1f77b4")
 
-    # invisible overlay captures the mouse across the chart area so nearest works without touching the line
-    selectors = alt.Chart(hist_display).mark_rect(opacity=0).encode(x="date:T").add_selection(nearest)
+    # overlay for mouse capture
+    selectors = alt.Chart(hist_display).mark_point(opacity=0).encode(
+        x="date:T",
+        y="close:Q"
+    ).add_selection(nearest)
 
-    # vertical rule at the nearest x position
-    rules = alt.Chart(hist_display).mark_rule(color="gray").encode(x="date:T").transform_filter(nearest)
+    # vertical rule at the nearest x
+    rules = base.mark_rule(color="gray").encode(
+        x="date:T"
+    ).transform_filter(nearest)
 
-    # tooltip layer (invisible point that carries the tooltip)
-    tooltip = alt.Chart(hist_display).mark_point().encode(
+    # dot at nearest point
+    points = base.mark_point(size=60, color="#1f77b4").encode(
+        opacity=alt.condition(nearest, alt.value(1), alt.value(0))
+    ).transform_filter(nearest)
+
+    # tooltip showing both date and price
+    tooltip = base.mark_point(opacity=0).encode(
+        tooltip=[
+            alt.Tooltip("date_formatted:N", title="Date"),
+            alt.Tooltip("close:Q", title="Price", format="$,.2f")
+        ]
+    ).transform_filter(nearest)
+
+    # label follows mouse
+    label = alt.Chart(hist_display).mark_text(
+        align="left", dx=8, dy=-10, color="#111"
+    ).encode(
         x="date:T",
         y="close:Q",
-        tooltip=[alt.Tooltip("date_formatted:N", title="Date"), alt.Tooltip("close_formatted:N", title="Price")],
-        opacity=alt.value(0),
+        text=alt.Text("label:N")
     ).transform_filter(nearest)
 
-    # label text shown at top-left while hovering (always visible when hovering)
-    label = alt.Chart(hist_display).mark_text(align="left", dx=10, dy=10, color="#111").encode(
-        text=alt.Text("label:N"),
-    ).transform_filter(nearest)
+    chart = alt.layer(line, selectors, rules, points, tooltip, label).properties(
+        height=420
+    ).interactive(bind_x=True)  # <-- now you can zoom/pan along x-axis
 
-    chart = alt.layer(line, selectors, rules, tooltip, label).properties(height=420).interactive()
     st.altair_chart(chart, use_container_width=True)
+
+
 
     st.write("---")
     with st.expander("Technical Methodology & Details"):
