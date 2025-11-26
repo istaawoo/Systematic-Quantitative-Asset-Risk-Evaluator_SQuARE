@@ -165,7 +165,7 @@ if "hist" in st.session_state:
     # Header
     colA, colB = st.columns([3, 1])
     with colA:
-        st.markdown(f"## {ticker}: ${last_price:,.2f}")
+        st.markdown(f"## {ticker}: ${last_price:.2f}")
         st.caption(f"Data timestamp: {updated}")
         # short ASI definition
         st.caption("ASI = Asset Stability Index (0-100). Higher = more risky. Computed from volatility, drawdown, liquidity, and growth.")
@@ -183,12 +183,12 @@ if "hist" in st.session_state:
             except Exception:
                 return str(mc)
             if mc >= 1e12:
-                return f"${mc/1e12:,.2f}T"
+                return f"${mc/1e12:.2f}T"
             if mc >= 1e9:
-                return f"${mc/1e9:,.2f}B"
+                return f"${mc/1e9:.2f}B"
             if mc >= 1e6:
-                return f"${mc/1e6:,.2f}M"
-            return f"${mc:,.2f}"
+                return f"${mc/1e6:.2f}M"
+            return f"${mc:,.0f}"
 
         # logo (if available) and info in a horizontal layout
         logo_url = info.get("logo_url") or info.get("logo")
@@ -219,6 +219,8 @@ if "hist" in st.session_state:
     st.subheader("Key metrics")
     cols = st.columns(4)
     
+    
+
     with cols[0]:
         cols[0].markdown(
             f"**Volatility {tooltip_icon('Volatility is the typical size of daily price moves, annualized. Higher volatility = larger price swings and higher short-term risk. Lower volatility = more stable prices.')}**",
@@ -286,23 +288,20 @@ if "hist" in st.session_state:
     actual_asi = st.session_state["rule_asi"]
 
     with col_actual:
-        st.metric("Actual ASI (rule-based)", f"{actual_asi:.2f} / 100")
+        st.metric("Actual ASI (rule-based)", f"{actual_asi:.1f} / 100")
     with col_hyp:
-        st.metric("Hypothetical ASI (your sliders)", f"{hypothetical_asi:.2f} / 100")
+        st.metric("Hypothetical ASI (your sliders)", f"{hypothetical_asi:.1f} / 100")
 
-            # Chart — constrained timeframe + date-range slider for zooming, with clean tooltip
+        # Chart with improved hover behavior and bounded zoom
     st.subheader("Price chart - hover to see details")
 
-    # timeframe controls (1y or 5y)
+    # timeframe controls (default: 1y)
     timeframe = st.selectbox("Time range:", ["1y", "5y"], index=0, key="chart_timeframe")
 
-    # prepare base history with timezone-naive datetimes
     hist_reset = hist.reset_index().rename(columns={"Date": "date", "Close": "close"})
-    hist_reset["date"] = pd.to_datetime(hist_reset["date"]).dt.tz_localize(None)
-
     end = hist_reset["date"].iloc[-1]
     one_year_ago = end - pd.Timedelta(days=365)
-    five_year_ago = end - pd.Timedelta(days=5 * 365)
+    five_year_ago = end - pd.Timedelta(days=5*365)
 
     if timeframe == "1y":
         hist_display = hist_reset.loc[hist_reset["date"] >= one_year_ago].copy()
@@ -312,79 +311,75 @@ if "hist" in st.session_state:
         domain_max = hist_display["date"].max()
     else:
         hist_display = hist_reset.loc[hist_reset["date"] >= five_year_ago].copy()
-        # downsample weekly so chart is cleaner on 5y
         hist_display = hist_display.set_index("date").resample("W").last().dropna().reset_index()
         domain_min = hist_display["date"].min()
         domain_max = hist_display["date"].max()
 
-    # Default visible window = full domain; user can tighten with slider
-    # Use Python datetimes for the streamlit slider
-    start_default = domain_min.to_pydatetime()
-    end_default = domain_max.to_pydatetime()
+    hist_display["date_formatted"] = hist_display["date"].dt.strftime("%Y-%m-%d")
+    hist_display["close"] = hist_display["close"].round(2)
 
-    # Range slider to choose visible subrange (cannot go outside domain_min/domain_max)
-    start_dt, end_dt = st.slider(
-        "Visible range (drag to zoom inside timeframe)",
-        min_value=start_default,
-        max_value=end_default,
-        value=(start_default, end_default),
-        format="MMM dd, yyyy",
-        key="chart_range",
+    # hist_display["close_formatted"] = hist_display["close"].apply(lambda x: f"${x:.2f}")
+
+    # Zoomable Altair chart constrained to timeframe, with proper tooltip
+    nearest = alt.selection_single(
+        on="mousemove",
+        fields=["date"],
+        nearest=True,
+        empty="none"
     )
 
-    # Filter view to the selected window (this is the "zoom" area)
-    start_ts = pd.Timestamp(start_dt)
-    end_ts = pd.Timestamp(end_dt)
-    hist_view = hist_display[(hist_display["date"] >= start_ts) & (hist_display["date"] <= end_ts)].copy()
-    if len(hist_view) == 0:
-        st.warning("No data in the selected window. Please pick a smaller range.")
-        hist_view = hist_display.copy()
-
-    # Prepare formatted fields for tooltip and label
-    hist_view["date_formatted"] = hist_view["date"].dt.strftime("%b %d, %Y")   # e.g., Jan 03, 2025
-    hist_view["close_formatted"] = hist_view["close"].apply(lambda x: f"${x:,.2f}")  # two decimals
-    hist_view["label"] = hist_view["date_formatted"] + ": " + hist_view["close_formatted"]
-
-    # Stable nearest selection on the x field
-    nearest = alt.selection_single(on="mouseover", fields=["date"], nearest=True, empty="none")
-
-    # Base chart scoped to the visible window using explicit domain (prevents outside panning)
-    base = alt.Chart(hist_view).encode(
-        x=alt.X("date:T", title="Date", scale=alt.Scale(domain=[start_ts, end_ts], clamp=True)),
+    base = alt.Chart(hist_display).encode(
+        x=alt.X(
+            "date:T",
+            title="Date",
+            scale=alt.Scale(domain=[domain_min, domain_max], clamp=True)  # limits max domain
+        ),
         y=alt.Y("close:Q", title="Close Price ($)")
     )
 
-    line = base.mark_line(color="#1f77b4").interactive(bind_y=False)  # allow hover interaction but lock y-zoom
+    line = base.mark_line(color="#1f77b4")
 
-    # invisible overlay to capture mouse movements; add the selection to it
-    selectors = alt.Chart(hist_view).mark_point(opacity=0).encode(x="date:T").add_selection(nearest)
+    # overlay for mouse capture
+    selectors = alt.Chart(hist_display).mark_point(opacity=0).encode(
+        x="date:T",
+        y="close:Q"
+    ).add_selection(nearest)
 
-    # vertical rule at the nearest x position
-    rules = base.mark_rule(color="gray").encode(x="date:T").transform_filter(nearest)
+    # vertical rule at the nearest x
+    rules = base.mark_rule(color="gray").encode(
+        x="date:T"
+    ).transform_filter(nearest)
 
-    # dot at the nearest point
+    # dot at nearest point
     points = base.mark_point(size=60, color="#1f77b4").encode(
         opacity=alt.condition(nearest, alt.value(1), alt.value(0))
     ).transform_filter(nearest)
 
-    # tooltip (uses formatted string for consistent 2-decimal price and date)
-    tooltip = alt.Chart(hist_view).mark_point(opacity=0).encode(
-        x="date:T",
-        y="close:Q",
-        tooltip=[
-            alt.Tooltip("date_formatted:N", title="Date"),
-            alt.Tooltip("close_formatted:N", title="Price")
-        ],
-    ).transform_filter(nearest)
+    # tooltip showing both date and price
+    tooltip = base.mark_point(opacity=0).encode(
+    tooltip=[
+        alt.Tooltip("date:T", title="Date", format="%Y-%m-%d"),
+        alt.Tooltip("close:Q", title="Price", format="$,.2f")  # forces 2 decimals
+    ]
+).transform_filter(nearest)
 
-    # small label next to point (follows the curve)
-    label = alt.Chart(hist_view).mark_text(align="left", dx=8, dy=-10, color="#111").encode(
-        text=alt.Text("label:N")
-    ).transform_filter(nearest)
 
-    chart = alt.layer(line, selectors, rules, points, tooltip, label).properties(height=420)
 
-    # Render chart
+
+
+    # label follows mouse
+    label = alt.Chart(hist_display).mark_text(
+    align="left", dx=8, dy=-10, color="#ffffff"
+).encode(
+    x="date:T",
+    y="close:Q",
+    text="label:N"
+).transform_filter(nearest)
+
+    chart = alt.layer(line, selectors, rules, points, tooltip).properties(
+        height=420
+    )
+
     st.altair_chart(chart, use_container_width=True)
 
     st.write("---")
