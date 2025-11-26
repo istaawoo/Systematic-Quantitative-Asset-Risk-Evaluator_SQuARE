@@ -1,1 +1,8 @@
 streamlit
+yfinance
+pandas
+numpy
+altair
+requests
+lxml
+beautifulsoup4
