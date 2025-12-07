@@ -349,95 +349,60 @@ if "hist" in st.session_state:
         
         st.info(recommendation)
 
-        # Chart with improved hover behavior and bounded zoom
-    st.subheader("Price chart - hover to see details")
-
-    # timeframe controls (default: 1y)
-    timeframe = st.selectbox("Time range:", ["1y", "5y"], index=0, key="chart_timeframe")
-
-    hist_reset = hist.reset_index().rename(columns={"Date": "date", "Close": "close"})
-    end = hist_reset["date"].iloc[-1]
-    one_year_ago = end - pd.Timedelta(days=365)
-    five_year_ago = end - pd.Timedelta(days=5*365)
-
-    if timeframe == "1y":
-        hist_display = hist_reset.loc[hist_reset["date"] >= one_year_ago].copy()
-        if len(hist_display) < 10:
-            hist_display = hist_reset.tail(252).copy()
-        domain_min = hist_display["date"].min()
-        domain_max = hist_display["date"].max()
-    else:
-        hist_display = hist_reset.loc[hist_reset["date"] >= five_year_ago].copy()
-        hist_display = hist_display.set_index("date").resample("W").last().dropna().reset_index()
-        domain_min = hist_display["date"].min()
-        domain_max = hist_display["date"].max()
-
-    hist_display["date_formatted"] = hist_display["date"].dt.strftime("%Y-%m-%d")
-    hist_display["close"] = hist_display["close"].round(2)
-
-    # hist_display["close_formatted"] = hist_display["close"].apply(lambda x: f"${x:.2f}")
-
-    # Zoomable Altair chart constrained to timeframe, with proper tooltip
-    nearest = alt.selection_single(
-        on="mousemove",
-        fields=["date"],
-        nearest=True,
-        empty="none"
-    )
-
-    base = alt.Chart(hist_display).encode(
-        x=alt.X(
-            "date:T",
-            title="Date",
-            scale=alt.Scale(domain=[domain_min, domain_max], clamp=True)  # limits max domain
-        ),
-        y=alt.Y("close:Q", title="Close Price ($)")
-    )
-
-    line = base.mark_line(color="#1f77b4")
-
-    # overlay for mouse capture
-    selectors = alt.Chart(hist_display).mark_point(opacity=0).encode(
-        x="date:T",
-        y="close:Q"
-    ).add_selection(nearest)
-
-    # vertical rule at the nearest x
-    rules = base.mark_rule(color="gray").encode(
-        x="date:T"
-    ).transform_filter(nearest)
-
-    # dot at nearest point
-    points = base.mark_point(size=60, color="#1f77b4").encode(
-        opacity=alt.condition(nearest, alt.value(1), alt.value(0))
-    ).transform_filter(nearest)
-
-    # tooltip showing both date and price
-    tooltip = base.mark_point(opacity=0).encode(
-    tooltip=[
-        alt.Tooltip("date:T", title="Date", format="%Y-%m-%d"),
-        alt.Tooltip("close:Q", title="Price", format="$,.2f")  # forces 2 decimals
-    ]
-).transform_filter(nearest)
-
-
-
-
-
-    # label follows mouse
-    label = alt.Chart(hist_display).mark_text(
-    align="left", dx=8, dy=-10, color="#ffffff"
-).encode(
-    x="date:T",
-    y="close:Q",
-    text="label:N"
-).transform_filter(nearest)
-
-    chart = alt.layer(line, selectors, rules, points, tooltip).properties(
-        height=420
-    )
-
-    st.altair_chart(chart, use_container_width=True)
+    # --- Financial Metrics Section ---
+    st.write("---")
+    st.subheader("📊 Financial Metrics")
+    
+    # Get additional fundamentals from classified stock data
+    metrics_display = {}
+    
+    # Current price metrics
+    current_price = hist.iloc[-1]["Close"]
+    metrics_display["Current Price"] = f"${current_price:.2f}"
+    
+    # Market cap
+    if classified.get("market_cap"):
+        market_cap = classified["market_cap"]
+        if market_cap >= 1_000_000_000_000:
+            metrics_display["Market Cap"] = f"${market_cap/1_000_000_000_000:.2f}T"
+        elif market_cap >= 1_000_000_000:
+            metrics_display["Market Cap"] = f"${market_cap/1_000_000_000:.2f}B"
+        else:
+            metrics_display["Market Cap"] = f"${market_cap/1_000_000:.2f}M"
+    
+    # Valuation metrics
+    if classified.get("pe_ratio"):
+        pe = classified["pe_ratio"]
+        metrics_display["P/E Ratio"] = f"{pe:.2f}x" if pe else "N/A"
+    
+    if classified.get("dividend_yield") is not None:
+        div_yield = classified["dividend_yield"]
+        metrics_display["Dividend Yield"] = f"{div_yield*100:.2f}%" if div_yield else "0.00%"
+    
+    # Growth metrics
+    if classified.get("earnings_growth"):
+        earnings_growth = classified["earnings_growth"]
+        metrics_display["Earnings Growth"] = f"{earnings_growth*100:.2f}%" if earnings_growth else "N/A"
+    
+    if classified.get("revenue_growth"):
+        revenue_growth = classified["revenue_growth"]
+        metrics_display["Revenue Growth"] = f"{revenue_growth*100:.2f}%" if revenue_growth else "N/A"
+    
+    # Price performance
+    one_year_ago_price = hist.iloc[0]["Close"] if len(hist) > 0 else current_price
+    one_year_return = ((current_price - one_year_ago_price) / one_year_ago_price) * 100
+    metrics_display["1-Year Return"] = f"{one_year_return:.2f}%"
+    
+    # Volatility (annualized)
+    daily_returns = hist["Close"].pct_change().dropna()
+    annualized_vol = daily_returns.std() * np.sqrt(252)
+    metrics_display["Annualized Volatility"] = f"{annualized_vol*100:.2f}%"
+    
+    # Display metrics in a grid
+    cols = st.columns(3)
+    for idx, (key, value) in enumerate(metrics_display.items()):
+        with cols[idx % 3]:
+            st.metric(key, value)
 
     st.write("---")
     with st.expander("Technical Methodology & Details"):
