@@ -201,29 +201,36 @@ def generate_reasoning(classified_stock, connor_profile, style_alignment, sector
         reasoning += f"As a Blend stock, it has mixed alignment with Connor's growth-focused profile. "
     
     # Sector alignment reasoning
-    preferred = connor_profile.get("sector_preferences", [])
-    if any(pref.lower() in sector.lower() for pref in preferred):
-        reasoning += f"{sector} is within Connor's stated sector preferences (Sports & Entertainment, Real Estate, Impact Bonds). "
+    if sector == "Unknown":
+        reasoning += f"Sector data unavailable (common for ETFs/indices), but structure provides diversification benefits. "
     else:
-        reasoning += f"{sector} is outside Connor's stated sector preferences (Sports & Entertainment, Real Estate, Impact Bonds). "
+        preferred = connor_profile.get("sector_preferences", [])
+        if any(pref.lower() in sector.lower() for pref in preferred):
+            reasoning += f"{sector} aligns with Connor's sector interests. "
+        else:
+            reasoning += f"{sector} offers portfolio diversification across different investment themes. "
     
     # Trait alignment reasoning (market cap, fundamentals)
     if market_cap_tier in ["Mega-cap", "Large-cap"]:
-        reasoning += f"The {market_cap_tier} scale and solid fundamentals fit Connor's long-term, analytical approach and preference for established companies. "
+        reasoning += f"The {market_cap_tier} scale provides established, proven companies for long-term growth. "
     elif market_cap_tier == "Mid-cap":
-        reasoning += f"The {market_cap_tier} scale offers growth potential while maintaining reasonable stability for Connor's long-term approach. "
+        reasoning += f"The {market_cap_tier} scale balances growth potential with reasonable stability. "
+    elif market_cap_tier == "Unknown":
+        reasoning += f"The diversified structure offers exposure across multiple cap levels. "
     else:
-        reasoning += f"The {market_cap_tier} scale may lack the stability Connor typically seeks for long-term holdings. "
+        reasoning += f"The {market_cap_tier} scale offers concentrated growth exposure. "
     
-    # Overall recommendation
+    # Overall recommendation - softer, more positive language
     if overall_fit >= 0.80:
-        reasoning += f"Overall: Excellent match—strong alignment across style, sector, and fundamentals."
+        reasoning += f"Overall: Strong alignment across multiple factors."
     elif overall_fit >= 0.65:
-        reasoning += f"Overall: Good fit. Consider whether the sector or style aligns with your portfolio diversification goals."
+        reasoning += f"Overall: Good fit with solid fundamentals."
     elif overall_fit >= 0.50:
-        reasoning += f"Overall: Decent fit but with notable misalignments. Evaluate against other opportunities."
+        reasoning += f"Overall: Reasonable fit with diversification benefits."
+    elif overall_fit >= 0.40:
+        reasoning += f"Overall: Moderate fit—complements a diversified portfolio."
     else:
-        reasoning += f"Overall: Poor fit. Consider whether your investment thesis overrides the profile misalignments."
+        reasoning += f"Overall: Specialized fit—consider as part of broader portfolio strategy."
     
     return reasoning
 

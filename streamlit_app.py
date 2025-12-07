@@ -81,10 +81,10 @@ def fetch_ticker_data(t):
         return None, None, None
 
 # --- Input form: allows Enter to submit
-with st.form(key="ticker_form", clear_on_submit=False):
+with st.form(key="ticker_form", clear_on_submit=True):
     col1, col2 = st.columns([3, 1])
     with col1:
-        ticker_input = st.text_input("Enter ticker (e.g. AAPL)", value=st.session_state.get("ticker", "AAPL")).upper()
+        ticker_input = st.text_input("Enter ticker (e.g. AAPL)", value="").upper()
     with col2:
         submitted = st.form_submit_button("Fetch")
 
