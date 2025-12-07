@@ -4,8 +4,8 @@
   "traits": [
     "Long-Term Oriented",
     "Hands-On/Operational",
-    "Socially Conscious",
-    "Diligent/Analytical"
+    "Diligent/Analytical",
+    "Growth-Focused"
   ],
   "biases": [
     "Affinity Bias",
@@ -13,14 +13,17 @@
     "Survivorship Bias"
   ],
   "sector_preferences": [
+    "Technology",
+    "Healthcare",
+    "Consumer Discretionary",
+    "Communication Services",
     "Sports & Entertainment",
-    "Urban Real Estate/Development",
-    "Social Impact Bonds"
+    "Urban Real Estate/Development"
   ],
-  "growth_focus_score": 0.67,
-  "momentum_bias": 0.60,
-  "key_philosophy": "Builder mindset, rejects transactional relationships, favors illiquid private market investments with 10+ year horizons",
+  "growth_focus_score": 0.75,
+  "momentum_bias": 0.65,
+  "key_philosophy": "Builder mindset, favors innovative, scaling companies with strong fundamentals. Long-term horizon (10+ years) with preference for mega/large-cap positions that dominate their markets.",
   "investment_horizon_years": 10,
-  "market_cap_preference": "Mid to Large Cap",
-  "liquidity_preference": "Lower (prefers illiquid, long-term holds)"
+  "market_cap_preference": "Large-Cap to Mega-Cap",
+  "liquidity_preference": "High (liquid equities for long-term holding)"
 }

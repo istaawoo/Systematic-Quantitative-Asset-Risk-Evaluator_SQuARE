@@ -28,30 +28,33 @@ def load_connor_profile(json_path="behavioral_profile.json"):
 
 def compute_style_alignment(stock_style, connor_profile):
     """
-    Compute alignment between stock style and Connor's Aggressive profile.
-    Connor is growth-focused (0.67 growth score), so Growth stocks score high.
+    Compute alignment between stock style and Connor's Aggressive, growth-focused profile.
+    Connor has 0.67 growth_focus_score, indicating strong preference for growth/scaling companies.
     """
     growth_focus = connor_profile.get("growth_focus_score", 0.67)
     
     if stock_style == "Growth":
-        return 0.95 * growth_focus  # ~0.64-0.95
+        return min(1.0, 0.95 * growth_focus + 0.15)  # Boost Growth alignment to 0.78-0.95 (was 0.64-0.95)
     elif stock_style == "Blend":
-        return 0.70 * growth_focus  # ~0.47-0.70
+        return 0.75 * growth_focus  # Boost Blend to 0.50-0.75 (was 0.47-0.70)
     elif stock_style == "Value":
-        return 0.40 * (1 - growth_focus)  # ~0.13-0.40
+        return 0.30 * (1 - growth_focus)  # Reduce Value penalty slightly (was 0.13-0.40)
     elif stock_style == "Dividend":
-        return 0.35 * (1 - growth_focus)  # ~0.12-0.35
+        return 0.25 * (1 - growth_focus)  # Reduce Dividend penalty (was 0.12-0.35)
     else:
-        return 0.50  # Neutral for unknown
+        return 0.65  # Neutral for unknown (was 0.50)
 
 
 def compute_sector_alignment(stock_sector, connor_profile):
     """
-    Compute alignment between stock sector and Connor's preferred sectors.
+    Compute alignment between stock sector and Connor's investment profile.
+    Connor's stated preferences are niche (Sports, Real Estate, Impact), but his actual 
+    holdings show strong Tech/Growth exposure, suggesting those sectors align with his 
+    builder mindset and 10-year horizon.
     """
     preferred_sectors = connor_profile.get("sector_preferences", [])
     
-    # Check for direct match
+    # Check for direct match with stated preferences
     for pref in preferred_sectors:
         if pref.lower() in stock_sector.lower() or stock_sector.lower() in pref.lower():
             return 0.95
@@ -67,44 +70,69 @@ def compute_sector_alignment(stock_sector, connor_profile):
     if common_keywords:
         return 0.75
     
-    # Neutral sectors (neither good nor bad)
-    neutral_sectors = ["Technology", "Healthcare", "Financials", "Industrials"]
-    if any(neut.lower() in stock_sector.lower() for neut in neutral_sectors):
-        return 0.50
+    # Strong alignment: Technology and Healthcare align with Connor's growth focus and builder mindset
+    # These sectors produce innovative, scaling companies suitable for long-term growth investing
+    strong_sectors = ["Technology", "Healthcare", "Consumer Discretionary", "Communication Services"]
+    if any(strong.lower() in stock_sector.lower() for strong in strong_sectors):
+        return 0.80  # Increased from 0.50
     
-    # Non-preferred
-    return 0.30
+    # Moderate alignment: Financials and Industrials support a balanced portfolio
+    moderate_sectors = ["Financials", "Industrials", "Energy", "Materials"]
+    if any(mod.lower() in stock_sector.lower() for mod in moderate_sectors):
+        return 0.65  # Increased from 0.50
+    
+    # Defensive sectors: Less aligned with aggressive profile but acceptable
+    defensive_sectors = ["Consumer Staples", "Utilities"]
+    if any(def_sec.lower() in stock_sector.lower() for def_sec in defensive_sectors):
+        return 0.55
+    
+    # Default neutral
+    return 0.60  # Increased from 0.30
 
 
 def compute_trait_alignment(classified_stock, connor_profile):
     """
     Compute alignment based on stock characteristics (market cap, fundamentals) vs Connor's traits.
-    Connor is: Long-Term Oriented, Hands-On/Operational, Diligent/Analytical
+    Connor is: Long-Term Oriented, Hands-On/Operational, Diligent/Analytical, Growth-focused
+    Favors: Large-cap, high-quality growth companies with strong fundamentals and innovation
     """
-    alignment = 0.50  # Start neutral
+    alignment = 0.55  # Start slightly above neutral (was 0.50)
     
     market_cap_tier = classified_stock.get("market_cap_tier")
     pe_ratio = classified_stock.get("pe_ratio")
     earnings_growth = classified_stock.get("earnings_growth")
     
-    # Long-Term Oriented: Prefer large/stable companies with good fundamentals
-    if market_cap_tier in ["Mega-cap", "Large-cap"]:
+    # Long-Term Oriented: Prefer large/established companies with staying power
+    if market_cap_tier == "Mega-cap":
+        alignment += 0.20  # Increased from 0.15 - these are Connor's bread-and-butter
+    elif market_cap_tier == "Large-cap":
         alignment += 0.15
     elif market_cap_tier == "Mid-cap":
         alignment += 0.10
-    elif market_cap_tier in ["Small-cap", "Micro-cap"]:
-        alignment -= 0.10
+    elif market_cap_tier == "Small-cap":
+        alignment -= 0.05  # Slightly negative, but not harsh (was -0.10)
+    elif market_cap_tier == "Micro-cap":
+        alignment -= 0.15
     
-    # Diligent/Analytical: Prefer stocks with clear, strong fundamentals
-    if earnings_growth and earnings_growth > 0.10:
+    # Diligent/Analytical: Prefer stocks with clear, strong fundamentals and growth trajectory
+    if earnings_growth and earnings_growth > 0.20:
+        alignment += 0.15  # Increased from 0.10 - rewards strong growth
+    elif earnings_growth and earnings_growth > 0.10:
         alignment += 0.10
+    elif earnings_growth and earnings_growth > 0.05:
+        alignment += 0.05
     elif earnings_growth and earnings_growth < 0:
-        alignment -= 0.10
+        alignment -= 0.08  # Slightly less harsh (was -0.10)
     
+    # P/E ratio - higher P/E is acceptable for growth stocks Connor owns
     if pe_ratio:
-        if 15 <= pe_ratio <= 30:  # Reasonable P/E
-            alignment += 0.10
-        elif pe_ratio > 50:  # Expensive
+        if 20 <= pe_ratio <= 40:  # Growth P/E range (was 15-30)
+            alignment += 0.12  # Increased from 0.10
+        elif 15 <= pe_ratio < 20:  # Value-ish growth
+            alignment += 0.08
+        elif pe_ratio > 40:  # Very expensive but acceptable if growth justifies
+            alignment += 0.05  # Slightly positive (was -0.05)
+        elif pe_ratio < 15:  # Cheap, which Connor doesn't typically seek
             alignment -= 0.05
     
     # Clamp to [0, 1]
@@ -114,19 +142,20 @@ def compute_trait_alignment(classified_stock, connor_profile):
 def compute_overall_fit(style_alignment, sector_alignment, trait_alignment):
     """
     Compute overall fit score using weighted average.
-    Weights: Style 50%, Sector 30%, Trait 20%
+    Weights: Style 45%, Sector 35%, Trait 20%
+    (Adjusted to give more weight to sector alignment which now better reflects Connor's actual behavior)
     """
-    overall = (0.5 * style_alignment) + (0.3 * sector_alignment) + (0.2 * trait_alignment)
+    overall = (0.45 * style_alignment) + (0.35 * sector_alignment) + (0.20 * trait_alignment)
     return max(0.0, min(1.0, overall))
 
 
 def fit_label_from_score(fit_score):
     """Map fit score to label."""
-    if fit_score >= 0.80:
+    if fit_score >= 0.75:
         return "Excellent Fit"
-    elif fit_score >= 0.65:
+    elif fit_score >= 0.60:
         return "Good Fit"
-    elif fit_score >= 0.50:
+    elif fit_score >= 0.45:
         return "Decent Fit"
     else:
         return "Poor Fit"
@@ -134,11 +163,11 @@ def fit_label_from_score(fit_score):
 
 def fit_emoji_from_score(fit_score):
     """Map fit score to emoji indicator."""
-    if fit_score >= 0.80:
+    if fit_score >= 0.75:
         return "🎯"
-    elif fit_score >= 0.65:
+    elif fit_score >= 0.60:
         return "✅"
-    elif fit_score >= 0.50:
+    elif fit_score >= 0.45:
         return "⚠️"
     else:
         return "❌"
