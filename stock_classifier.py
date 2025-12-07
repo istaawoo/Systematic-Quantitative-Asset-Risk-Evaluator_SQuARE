@@ -35,9 +35,19 @@ def classify_stock(ticker):
         sector = info.get("sector", "Unknown")
         market_cap = info.get("marketCap")
         pe_ratio = info.get("trailingPE")
-        dividend_yield = info.get("dividendYield")  # Already a decimal (e.g., 0.03 for 3%)
+        dividend_yield = info.get("dividendYield")  # May be decimal or percentage
         revenue_growth = info.get("revenueGrowth")  # Already a decimal
         earnings_growth = info.get("earningsGrowth")  # Already a decimal
+        
+        # Normalize dividend_yield: if > 1, assume it's a percentage (e.g., 37 not 0.37)
+        if dividend_yield and dividend_yield > 1:
+            dividend_yield = dividend_yield / 100
+        
+        # Normalize growth rates: if > 10, assume it's a percentage
+        if revenue_growth and revenue_growth > 10:
+            revenue_growth = revenue_growth / 100
+        if earnings_growth and earnings_growth > 10:
+            earnings_growth = earnings_growth / 100
         
         # Classify market cap tier
         market_cap_tier = "Unknown"
