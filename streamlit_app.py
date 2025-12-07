@@ -16,6 +16,18 @@ st.markdown("**Square Stock Analyzer**: Systematic Quantitative Asset Risk Evalu
 # Define weights at module level so they're accessible throughout
 weights = {"vol": 0.4, "drawdown": 0.25, "growth": 0.2, "liquidity": 0.15}
 
+# Metric definitions for tooltips
+metric_definitions = {
+    "Current Price": "The most recent closing price of the stock.",
+    "Market Cap": "Total market value of company's outstanding shares. Calculated as share price multiplied by number of shares.",
+    "P/E Ratio": "Price-to-Earnings ratio. Stock price divided by earnings per share. Lower ratios may indicate undervaluation, higher ratios may indicate growth expectations.",
+    "Dividend Yield": "Annual dividend payment as a percentage of stock price. Represents income return to shareholders.",
+    "Earnings Growth": "Year-over-year percentage change in earnings per share. Indicates company profitability trend.",
+    "Revenue Growth": "Year-over-year percentage change in total revenue. Indicates company sales growth.",
+    "1-Year Return": "Stock price change over the past year expressed as a percentage.",
+    "Annualized Volatility": "Standard deviation of daily returns annualized. Higher values indicate more price fluctuation and risk."
+}
+
 # CSS: tooltip delay and company card styling
 st.markdown(
     """
@@ -398,13 +410,28 @@ if "hist" in st.session_state:
     annualized_vol = daily_returns.std() * np.sqrt(252)
     metrics_display["Annualized Volatility"] = f"{annualized_vol*100:.2f}%"
     
-    # Display metrics in a grid
+    # Display metrics in a grid with tooltip icons
     cols = st.columns(3)
     for idx, (key, value) in enumerate(metrics_display.items()):
         with cols[idx % 3]:
-            st.metric(key, value)
+            tooltip_text = metric_definitions.get(key, "")
+            if tooltip_text:
+                metric_label = f'{key} <span class="tooltip">ⓘ<span class="tooltiptext">{tooltip_text}</span></span>'
+                st.markdown(f'<div>{metric_label}</div>', unsafe_allow_html=True)
+                st.metric("", value)
+            else:
+                st.metric(key, value)
 
     st.write("---")
+    
+    # Legal Disclaimer
+    st.info(
+        "⚠️ **Disclaimer**: Data is provided by yfinance and may be delayed. Stock prices and financial metrics are not real-time "
+        "and typically lag by 15-20 minutes. This tool is for informational purposes only and should not be considered financial advice. "
+        "Always verify critical data through official sources before making investment decisions. Past performance does not guarantee future results. "
+        "Consult a licensed financial advisor before making investment decisions."
+    )
+    
     with st.expander("Technical Methodology & Details"):
         st.markdown("""
         **Asset Stability Index (ASI) Calculation**
