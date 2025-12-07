@@ -1,0 +1,26 @@
+{
+  "investor_name": "Connor Barwin",
+  "risk_tolerance": "Aggressive",
+  "traits": [
+    "Long-Term Oriented",
+    "Hands-On/Operational",
+    "Socially Conscious",
+    "Diligent/Analytical"
+  ],
+  "biases": [
+    "Affinity Bias",
+    "Narrative Fallacy",
+    "Survivorship Bias"
+  ],
+  "sector_preferences": [
+    "Sports & Entertainment",
+    "Urban Real Estate/Development",
+    "Social Impact Bonds"
+  ],
+  "growth_focus_score": 0.67,
+  "momentum_bias": 0.60,
+  "key_philosophy": "Builder mindset, rejects transactional relationships, favors illiquid private market investments with 10+ year horizons",
+  "investment_horizon_years": 10,
+  "market_cap_preference": "Mid to Large Cap",
+  "liquidity_preference": "Lower (prefers illiquid, long-term holds)"
+}

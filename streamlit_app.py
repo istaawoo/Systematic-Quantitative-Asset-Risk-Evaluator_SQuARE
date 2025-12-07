@@ -5,6 +5,8 @@ import pandas as pd
 import numpy as np
 import altair as alt
 from datetime import datetime, timezone
+from stock_classifier import classify_stock
+from stock_profile_matcher import match_stock_to_connor, load_connor_profile
 
 st.set_page_config(layout="wide", page_title="Stock Risk Explorer")
 st.title("Stock Risk Explorer")
@@ -291,6 +293,61 @@ if "hist" in st.session_state:
         st.metric("Actual ASI (rule-based)", f"{actual_asi:.1f} / 100")
     with col_hyp:
         st.metric("Hypothetical ASI (your sliders)", f"{hypothetical_asi:.1f} / 100")
+
+    # --- Profile Matching Section ---
+    st.write("---")
+    st.subheader("✨ Fit with Connor Barwin's Profile")
+    
+    # Classify stock and compute fit
+    classified = classify_stock(ticker)
+    connor_profile = load_connor_profile()
+    fit_result = match_stock_to_connor(classified, connor_profile)
+    
+    if fit_result.get("error"):
+        st.warning(f"Unable to compute profile fit: {fit_result['error']}")
+    else:
+        # Display overall fit score and label
+        col_fit1, col_fit2 = st.columns([2, 3])
+        with col_fit1:
+            fit_score = fit_result.get("fit_score", 0)
+            fit_label = fit_result.get("fit_label", "Unknown")
+            fit_emoji = fit_result.get("fit_emoji", "❓")
+            st.markdown(f"### {fit_emoji} {fit_label}")
+            st.metric("Overall Fit Score", f"{fit_score:.2f} / 1.00")
+        
+        with col_fit2:
+            # Display three alignment subscores
+            st.markdown("**Alignment Breakdown:**")
+            col_s1, col_s2, col_s3 = st.columns(3)
+            with col_s1:
+                style_align = fit_result.get("style_alignment", 0)
+                st.metric("Style", f"{style_align:.2f}")
+            with col_s2:
+                sector_align = fit_result.get("sector_alignment", 0)
+                st.metric("Sector", f"{sector_align:.2f}")
+            with col_s3:
+                trait_align = fit_result.get("trait_alignment", 0)
+                st.metric("Traits", f"{trait_align:.2f}")
+        
+        # Display reasoning
+        reasoning = fit_result.get("reasoning", "")
+        st.markdown(f"**Reasoning:**\n\n{reasoning}")
+        
+        # Display recommendation connecting ASI + fit
+        st.markdown("---")
+        recommendation = f"Based on {ticker}'s quantitative risk (ASI: {actual_asi:.1f}/100) and qualitative fit ({fit_label}), "
+        if actual_asi > 70 and fit_score < 0.50:
+            recommendation += f"this stock presents **high quantitative risk AND poor alignment** with Connor's profile. Proceed with caution."
+        elif actual_asi > 70 and fit_score >= 0.50:
+            recommendation += f"this stock has **high quantitative risk** but **good profile fit**. Consider if the alignment justifies the volatility."
+        elif actual_asi <= 70 and fit_score >= 0.65:
+            recommendation += f"this stock offers a **strong match**—reasonable risk profile with excellent profile alignment."
+        elif actual_asi <= 70 and fit_score < 0.50:
+            recommendation += f"this stock has **moderate quantitative risk** but **limited profile fit**. Diversify accordingly."
+        else:
+            recommendation += f"this stock warrants further evaluation against your broader portfolio strategy."
+        
+        st.info(recommendation)
 
         # Chart with improved hover behavior and bounded zoom
     st.subheader("Price chart - hover to see details")
