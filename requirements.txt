@@ -1,8 +1,9 @@
 streamlit
-yfinance
+yfinance>=0.2.32
 pandas
 numpy
 altair
-requests
+requests>=2.31.0
+requests-cache
 lxml
 beautifulsoup4

@@ -4,9 +4,16 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import altair as alt
+import requests
 from datetime import datetime, timezone
 from stock_classifier import classify_stock
 from stock_profile_matcher import match_stock_to_connor, load_connor_profile
+
+# Configure session with headers to avoid yfinance being blocked in cloud deployments
+session = requests.Session()
+session.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+})
 
 st.set_page_config(layout="wide", page_title="Stock Risk Explorer")
 st.title("Stock Risk Explorer")
@@ -67,7 +74,7 @@ st.markdown(
 @st.cache_data(ttl=60)
 def fetch_ticker_data(t):
     try:
-        tk = yf.Ticker(t)
+        tk = yf.Ticker(t, session=session)
         info = tk.info
         # fetch longer history so users can zoom out beyond one year
         hist = tk.history(period="5y", interval="1d", actions=False)
@@ -78,6 +85,7 @@ def fetch_ticker_data(t):
             intraday = None
         return info, hist, intraday
     except Exception:
+        return None, None, None
         return None, None, None
 
 # --- Input form: allows Enter to submit

@@ -2,6 +2,13 @@
 stock_classifier.py - Classifies stock style and market cap tier using yfinance data.
 """
 import yfinance as yf
+import requests
+
+# Configure session with headers to avoid yfinance being blocked in cloud deployments
+session = requests.Session()
+session.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+})
 
 
 def classify_stock(ticker):
@@ -28,7 +35,7 @@ def classify_stock(ticker):
     """
     try:
         # Fetch ticker info
-        ticker_obj = yf.Ticker(ticker)
+        ticker_obj = yf.Ticker(ticker, session=session)
         info = ticker_obj.info
         
         short_name = info.get("shortName", ticker)
