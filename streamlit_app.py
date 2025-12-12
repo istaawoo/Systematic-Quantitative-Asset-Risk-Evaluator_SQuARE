@@ -4,16 +4,9 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import altair as alt
-import requests
 from datetime import datetime, timezone
 from stock_classifier import classify_stock
 from stock_profile_matcher import match_stock_to_connor, load_connor_profile
-
-# Configure session with headers to avoid yfinance being blocked in cloud deployments
-session = requests.Session()
-session.headers.update({
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-})
 
 st.set_page_config(layout="wide", page_title="Stock Risk Explorer")
 st.title("Stock Risk Explorer")
@@ -70,12 +63,18 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# --- Helper: fetch data (cache)
-@st.cache_data(ttl=60)
+# --- Helper: fetch data (cache with shorter TTL)
+@st.cache_data(ttl=300)
 def fetch_ticker_data(t):
     try:
-        tk = yf.Ticker(t, session=session)
+        # Let yfinance handle the session (it uses curl_cffi internally)
+        tk = yf.Ticker(t)
         info = tk.info
+        
+        # Check if we got valid data
+        if not info or 'symbol' not in info:
+            return None, None, None
+        
         # fetch longer history so users can zoom out beyond one year
         hist = tk.history(period="5y", interval="1d", actions=False)
         intraday = None
@@ -84,23 +83,25 @@ def fetch_ticker_data(t):
         except Exception:
             intraday = None
         return info, hist, intraday
-    except Exception:
-        return None, None, None
+    except Exception as e:
+        print(f"yfinance error for {t}: {str(e)}")
         return None, None, None
 
 # --- Input form: allows Enter to submit
-with st.form(key="ticker_form", clear_on_submit=True):
+with st.form(key="ticker_form", clear_on_submit=False):
     col1, col2 = st.columns([3, 1])
     with col1:
-        ticker_input = st.text_input("Enter ticker (e.g. AAPL)", value="").upper()
+        ticker_input = st.text_input("Enter ticker (e.g. AAPL)", value=st.session_state.get("last_ticker", "")).upper()
     with col2:
         submitted = st.form_submit_button("Fetch")
 
 # If user submitted, fetch and store results (only on submit)
 if submitted and ticker_input:
-    info, hist, intraday = fetch_ticker_data(ticker_input)
+    st.session_state["last_ticker"] = ticker_input  # Store for next render
+    with st.spinner(f"Fetching {ticker_input}..."):
+        info, hist, intraday = fetch_ticker_data(ticker_input)
     if info is None or hist is None or len(hist) == 0:
-        st.error("No data found (ticker may be invalid or yfinance is blocked).")
+        st.error(f"No data found for {ticker_input}. The ticker may be invalid or yfinance is temporarily unavailable. Try again in a moment.")
     else:
         # store in session state so subsequent slider changes don't re-fetch
         st.session_state["ticker"] = ticker_input
@@ -248,28 +249,28 @@ if "hist" in st.session_state:
             f"**Volatility {tooltip_icon('Volatility is the typical size of daily price moves, annualized. Higher volatility = larger price swings and higher short-term risk. Lower volatility = more stable prices.')}**",
             unsafe_allow_html=True
         )
-        cols[0].metric("", f"{st.session_state['annual_vol']:.2%}")
+        cols[0].metric("Volatility", f"{st.session_state['annual_vol']:.2%}")
     
     with cols[1]:
         cols[1].markdown(
             f"**1-Year Return {tooltip_icon('Percentage change from the close 1 year ago to today. Positive returns may indicate growth, but extreme returns can signal heightened volatility or market concentration risk.')}**",
             unsafe_allow_html=True
         )
-        cols[1].metric("", f"{st.session_state['one_year_return']:.2f}%")
+        cols[1].metric("1-Year Return", f"{st.session_state['one_year_return']:.2f}%")
     
     with cols[2]:
         cols[2].markdown(
             f"**Max Drawdown {tooltip_icon('The largest peak-to-trough decline during the past year. Measures tail risk - the worst historical loss if you bought at the peak. Higher drawdowns indicate greater downside exposure.')}**",
             unsafe_allow_html=True
         )
-        cols[2].metric("", f"{st.session_state['max_dd']:.2f}%")
+        cols[2].metric("Max Drawdown", f"{st.session_state['max_dd']:.2f}%")
     
     with cols[3]:
         cols[3].markdown(
             f"**Avg Daily Volume {tooltip_icon('Average shares traded per day. Higher volume = better liquidity (easier to buy/sell). Low liquidity can make it difficult to exit positions during market stress.')}**",
             unsafe_allow_html=True
         )
-        cols[3].metric("", f"{st.session_state['avg_vol']:,.0f}")
+        cols[3].metric("Avg Daily Volume", f"{st.session_state['avg_vol']:,.0f}")
 
     st.write("---")
     st.subheader("Score breakdown (higher = more risky)")
@@ -426,7 +427,7 @@ if "hist" in st.session_state:
             if tooltip_text:
                 metric_label = f'{key} <span class="tooltip">ⓘ<span class="tooltiptext">{tooltip_text}</span></span>'
                 st.markdown(f'<div>{metric_label}</div>', unsafe_allow_html=True)
-                st.metric("", value)
+                st.metric(key, value)
             else:
                 st.metric(key, value)
 
