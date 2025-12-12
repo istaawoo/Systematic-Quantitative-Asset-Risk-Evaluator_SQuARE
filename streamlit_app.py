@@ -64,24 +64,38 @@ st.markdown(
 )
 
 # --- Helper: fetch data (cache with shorter TTL)
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=180)
 def fetch_ticker_data(t):
+    """
+    Fetch ticker fundamentals and history with fallbacks. Removes custom sessions to let
+    yfinance handle curl_cffi. Adds download fallback if history comes back empty.
+    """
     try:
-        # Let yfinance handle the session (it uses curl_cffi internally)
         tk = yf.Ticker(t)
         info = tk.info
-        
-        # Check if we got valid data
-        if not info or 'symbol' not in info:
-            return None, None, None
-        
-        # fetch longer history so users can zoom out beyond one year
+
+        # Fallback if info is missing/empty
+        if not info:
+            fast = getattr(tk, "fast_info", {}) or {}
+            info = {
+                "symbol": t.upper(),
+                "sector": fast.get("sector", "Unknown"),
+                "longName": fast.get("shortName", t.upper()),
+            }
+
+        # Fetch history with fallback
         hist = tk.history(period="5y", interval="1d", actions=False)
+        if hist is None or hist.empty:
+            # fallback to 1y to reduce chance of empty set
+            hist = yf.download(t, period="1y", interval="1d", auto_adjust=True, progress=False)
         intraday = None
         try:
             intraday = tk.history(period="7d", interval="1m")
         except Exception:
             intraday = None
+
+        if hist is None or len(hist) == 0:
+            return None, None, None
         return info, hist, intraday
     except Exception as e:
         print(f"yfinance error for {t}: {str(e)}")
